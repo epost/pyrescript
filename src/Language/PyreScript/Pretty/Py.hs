@@ -265,7 +265,7 @@ prettyPrintJS' = A.runKleisli $ runPattern matchValue
     OperatorTable [ [ Wrap accessor $ \prop val -> val <> emit "." <> prop ]
                   , [ Wrap indexer $ \index val -> val <> emit "[" <> index <> emit "]" ]
                   , [ Wrap app $ \args val -> val <> emit "(" <> args <> emit ")" ]
-                  , [ unary JSNew "new " ]
+                  , [ unary JSNew "" ]
                   , [ Wrap typeOf $ \_ s -> emit "type(" <> s <> emit ")" ]
                   , [ unary     Not                  "not "
                     , unary     BitwiseNot           "~"

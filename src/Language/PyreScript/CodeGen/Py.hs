@@ -68,6 +68,15 @@ moduleToPy (Module coms mn imps exps foreigns decls) foreign_ =
     let exps' = AST.JSArrayLiteral Nothing $ map (AST.JSVar Nothing . show . Common.identToPy) standardExps
                                ++ map foreignIdent foreignExps
     return $ moduleBody ++ [AST.JSAssignment Nothing (AST.JSVar Nothing "__all__") exps']
+    -- return $ map (AST.JSRaw Nothing) [
+    --   show exps
+    --   ,
+    --   show foreigns
+    --   ,
+    --   show decls
+    --   ,
+    --   show foreign_
+    --   ]
 
   where
 
@@ -108,8 +117,10 @@ moduleToPy (Module coms mn imps exps foreigns decls) foreign_ =
   importToJs :: M.Map ModuleName (Ann, ModuleName) -> ModuleName -> m AST.JS
   importToJs mnLookup mn' = do
     let ((ss, _, _, _), mnSafe) = fromMaybe (internalError "Missing value in mnLookup") $ M.lookup mn' mnLookup
-    let moduleBody = AST.JSApp Nothing (AST.JSVar Nothing "require") [AST.JSStringLiteral Nothing (".." </> runModuleName mn')]
-    withPos ss $ AST.JSVariableIntroduction Nothing (Common.moduleNameToPy mnSafe) (Just moduleBody)
+    -- let moduleBody = AST.JSApp Nothing (AST.JSVar Nothing "import") [AST.JSStringLiteral Nothing (runModuleName mn')]
+    -- withPos ss $ AST.JSVariableIntroduction Nothing (Common.moduleNameToPy mnSafe) (Just moduleBody)
+    let moduleBody = AST.JSApp Nothing (AST.JSVar Nothing "import") [AST.JSStringLiteral Nothing (runModuleName mn')]
+    withPos ss $ AST.JSRaw Nothing $ "import " ++ (Common.moduleNameToPyDotted mnSafe)
 
   -- |
   -- Replaces the `ModuleName`s in the AST so that the generated code refers to
@@ -204,16 +215,55 @@ moduleToPy (Module coms mn imps exps foreigns decls) foreign_ =
     obj <- valueToJs o
     sts <- mapM (sndM valueToJs) ps
     extendObj obj sts
-  valueToJs' e@(Abs (_, _, _, Just IsTypeClassConstructor) _ _) =
+  -- valueToJs' e@(Abs (_, _, _, Just IsTypeClassConstructor) _ _) =
+  valueToJs' e@(Abs (ss, xs, tp, Just IsTypeClassConstructor) _ _) =
+  -- valueToJs' e@(Abs 42 _ _) =
     let args = unAbs e
-    in return $ AST.JSFunction Nothing Nothing (map Common.identToPy args) (AST.JSBlock Nothing $ map assign args)
+    -- -- generates: Functor = lambda map:     this.map = map
+    -- in return $ AST.JSFunction Nothing Nothing (map Common.identToPy args) (AST.JSBlock Nothing $ map assign args)
+
+    -- typeclass as python dictionary
+    -- TODO AST.JSReturn
+    -- we wrap the dict in a lambda so js's accessor syntax will work
+    in return $ AST.JSFunction Nothing Nothing (map Common.identToPy args) (AST.JSRaw Nothing $ "    return lambda name: {" ++ (foldMap dictEntry args)  ++ "}[name]")
+
+    -- -- typeclass as python class
+    -- in return $ AST.JSRaw Nothing $ "class():" ++ "\n    def __init__(self, " ++ (foldMap Common.identToPy args) ++ ")"
+
+--    in return $ AST.JSRaw Nothing ("lalala lekker rauw, " ++ show tp ++", "++ show ss ++ ", " ++ show xs)
+    -- in str return $ \str -> AST.JSRaw ("lalala lekker rauw [" ++ str ++ "]")
     where
     unAbs :: Expr Ann -> [Ident]
     unAbs (Abs _ arg val) = arg : unAbs val
     unAbs _ = []
+
+    -- -- TODO use Symbols instead of strings as dictionary keys?
+    -- dictEntry :: Ident -> AST.JS
+    -- -- dictEntry name = AST.JSRaw Nothing $ "\"" ++ runIdent name ++ "\": " ++ runIdent name  ++ "}"
+    -- dictEntry name = AST.JSRaw Nothing $ "\"" ++ (runIdent name) ++ "\": " ++ (runIdent name) ++ "}"
+
+    dictEntry :: Ident -> String
+    -- dictEntry name = AST.JSRaw Nothing $ "\"" ++ runIdent name ++ "\": " ++ runIdent name  ++ "}"
+    dictEntry name = "\"" ++ (runIdent name) ++ "\": " ++ (runIdent name)
+
+
     assign :: Ident -> AST.JS
-    assign name = AST.JSAssignment Nothing (accessorString (runIdent name) (AST.JSVar Nothing "this"))
+-- TODO this
+    assign = assignJS
+    assignJS name = AST.JSAssignment Nothing (accessorString (runIdent name) (AST.JSVar Nothing "this"))
                                (var name)
+
+    -- assign = assignPyDictLit
+    -- assignPyDictLit :: Ident -> AST.JS
+    -- -- assignPyDictLit name = AST.JSAssignment Nothing (dictAccessorStringPy (runIdent name) (AST.JSVar Nothing "dict"))
+    -- --                            (var name)
+    -- -- TODO we want (AST.JSVar Nothing "dict") instead of "dict"
+    -- assignPyDictLit name = AST.JSAssignment Nothing (dictAccessorStringPy (runIdent name) "dict")
+    --                            (var name)
+    --
+    -- -- dictAccessorStringPy :: Ident -> AST
+    -- dictAccessorStringPy mapName keyName = mapName ++ "[" ++ keyName ++ "]"
+
   valueToJs' (Abs _ arg val) = do
     ret <- valueToJs val
     return $ AST.JSFunction Nothing Nothing [Common.identToPy arg] (AST.JSBlock Nothing [AST.JSReturn Nothing ret])
@@ -256,6 +306,7 @@ moduleToPy (Module coms mn imps exps foreigns decls) foreign_ =
                 (AST.JSUnary Nothing AST.JSNew $ AST.JSApp Nothing (AST.JSVar Nothing ctor) []) ]
   valueToJs' (Constructor _ _ (ProperName ctor) fields) =
     let constructor =
+-- niet thisYYY
           let body = [ AST.JSAssignment Nothing (AST.JSAccessor Nothing (Common.identToPy f) (AST.JSVar Nothing "this")) (var f) | f <- fields ]
           in AST.JSFunction Nothing (Just ctor) (Common.identToPy `map` fields) (AST.JSBlock Nothing body)
         createFn =
@@ -314,7 +365,7 @@ moduleToPy (Module coms mn imps exps foreigns decls) foreign_ =
   qualifiedToJS f (Qualified _ a) = AST.JSVar Nothing $ Common.identToPy (f a)
 
   foreignIdent :: Ident -> AST.JS
-  foreignIdent ident = accessorString (runIdent ident) (AST.JSVar Nothing "$foreign")
+  foreignIdent ident = accessorString (runIdent ident) (AST.JSVar Nothing "XXX_foreign")
 
   -- |
   -- Generate code in the simplified Javascript intermediate representation for pattern match binders

@@ -5,6 +5,8 @@ module Language.PyreScript.CodeGen.Py.Common
   ( identNeedsEscaping
   , identToPy
   , moduleNameToPy
+  , moduleNameToPyDotted
+  , moduleNameToPyPath
   ) where
 
 import Prelude.Compat
@@ -19,6 +21,18 @@ moduleNameToPy :: ModuleName -> String
 moduleNameToPy (ModuleName pns) =
   let name = intercalate "_" (runProperName `map` pns)
   in if nameIsPyBuiltIn name then "__" ++ name ++ "__" else name
+
+-- TODO adapted from 'moduleNameToPy'
+-- TODO is the underscore-producing original 'moduleNameToPy' correct for python?
+moduleNameToPyDotted :: ModuleName -> String
+moduleNameToPyDotted (ModuleName pns) =
+  intercalate "." (runProperName `map` pns)
+
+-- TODO adapted from 'moduleNameToPy'
+-- TODO is the underscore-producing original 'moduleNameToPy' correct for python?
+moduleNameToPyPath :: ModuleName -> String
+moduleNameToPyPath (ModuleName pns) =
+  intercalate "/" (runProperName `map` pns)
 
 -- |
 -- Convert an Ident into a valid Javascript identifier:

@@ -62,6 +62,7 @@ import Language.PureScript.TypeChecker
 import qualified Language.JavaScript.Parser as JS
 import qualified Language.PureScript.Bundle as Bundle
 import qualified Language.PyreScript.CodeGen.Py as Py
+import qualified Language.PyreScript.CodeGen.Py.Common as XXX
 import qualified Language.PureScript.Constants as C
 import qualified Language.PureScript.CoreFn as CF
 import qualified Language.PureScript.Parser as PSParser
@@ -138,6 +139,7 @@ rebuildModule MakeActions{..} externs m@(Module _ _ moduleName _ _) = do
   let env = foldl' (flip applyExternsFileToEnvironment) initEnvironment externs
       withPrim = importPrim m
   lint withPrim
+  -- TODO hier wat shit printen?
   ((Module ss coms _ elaborated exps, env'), nextVar) <- runSupplyT 0 $ do
     [desugared] <- desugar externs [withPrim]
     runCheck' env $ typeCheckModule desugared
@@ -286,7 +288,7 @@ readTextFile :: FilePath -> Make String
 readTextFile path = makeIO (const (ErrorMessage [] $ CannotReadFile path)) $ readUTF8File path
 
 -- | Infer the module name for a module by looking for the same filename with
--- a .js extension.
+-- a .py extension.
 inferForeignModules
   :: forall m
    . MonadIO m
@@ -297,7 +299,7 @@ inferForeignModules = fmap (M.mapMaybe id) . traverse inferForeignModule
     inferForeignModule :: Either RebuildPolicy FilePath -> m (Maybe FilePath)
     inferForeignModule (Left _) = return Nothing
     inferForeignModule (Right path) = do
-      let jsFile = replaceExtension path "js"
+      let jsFile = replaceExtension path "py"
       exists <- liftIO $ doesFileExist jsFile
       if exists
         then return (Just jsFile)
@@ -325,7 +327,7 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
   getOutputTimestamp :: ModuleName -> Make (Maybe UTCTime)
   getOutputTimestamp mn = do
     let filePath = runModuleName mn
-        jsFile = outputDir </> filePath </> "index.js"
+        jsFile = outputDir </> filePath </> "__init__.py"
         externsFile = outputDir </> filePath </> "externs.json"
     min <$> getTimestamp jsFile <*> getTimestamp externsFile
 
@@ -351,7 +353,9 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
     dir <- lift $ makeIO (const (ErrorMessage [] $ CannotGetFileInfo ".")) getCurrentDirectory
     sourceMaps <- lift $ asks optionsSourceMaps
     let (pjs, mappings) = if sourceMaps then Pretty.prettyPrintJSWithSourceMaps rawJs else (Pretty.prettyPrintJS rawJs, [])
-    let filePath = runModuleName mn
+    -- TODO hier filePath aanpassen naar a/b/c ipv a.b.c
+    -- let filePath = runModuleName mn
+    let filePath = XXX.moduleNameToPyPath mn
         jsFile = outputDir </> filePath </> "__init__.py"
         externsFile = outputDir </> filePath </> "externs.json"
         foreignFile = outputDir </> filePath </> "foreign.py"
@@ -411,6 +415,11 @@ buildMakeActions outputDir filePathMap foreigns usePrefix =
 --
 checkForeignDecls :: CF.Module ann -> FilePath -> SupplyT Make ()
 checkForeignDecls m path = do
+  pure ()
+
+-- TODO reinstate
+checkForeignDecls' :: CF.Module ann -> FilePath -> SupplyT Make ()
+checkForeignDecls' m path = do
   jsStr <- lift $ readTextFile path
   js <- either (errorParsingModule . Bundle.UnableToParseModule) pure $ JS.parse jsStr path
 
